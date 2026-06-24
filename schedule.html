@@ -3,8 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>每日排程</title>
+<title>每日排程(共用版)</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <style>
+/* 樣式保持不變 */
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body { background: #FAFAFA; font-family: -apple-system, 'PingFang TC', sans-serif; max-width: 480px; margin: 0 auto; }
 .header { background: #fff; padding: 16px 20px 0; box-shadow: 0 1px 0 rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 10; }
@@ -132,16 +142,48 @@ body { background: #FAFAFA; font-family: -apple-system, 'PingFang TC', sans-seri
 </div>
 
 <script>
+// ==================== Firebase 雲端連線設定 ====================
+const firebaseConfig = {
+  apiKey: "AIzaSyAiH4pNvtDe9Lu9AwrTRzcPCHRchM1ZS5c",
+  authDomain: "shared-schedule-d1d9a.firebaseapp.com",
+  databaseURL: "https://shared-schedule-d1d9a-default-rtdb.firebaseio.com",
+  projectId: "shared-schedule-d1d9a",
+  storageBucket: "shared-schedule-d1d9a.firebasestorage.app",
+  messagingSenderId: "985648282003",
+  appId: "1:985648282003:web:974df41b7b7f283dd95066",
+  measurementId: "G-HE4T4PKWGC"
+};
+
+// 初始化 Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+// ===============================================================
+
 const ICONS = { alarm:"⏰", rest:"☕", study:"📖", exercise:"🏃", shower:"🚿", review:"📚", game:"🎮", homework:"✏️", read:"📕", sleep:"🌙", work:"💼", meal:"🍜", music:"🎵", default:"📌" };
 const ICON_COLORS = { alarm:"#E8857A", rest:"#7AB8E8", study:"#E8857A", exercise:"#7AB8E8", shower:"#7AB8E8", review:"#E8857A", game:"#7ABA9A", homework:"#E8857A", read:"#E8A87A", sleep:"#9B7AE8", work:"#7AB8E8", meal:"#E8A87A", music:"#9B7AE8", default:"#9CA3AF" };
 const WEEK_DAYS = ["日","一","二","三","四","五","六"];
 const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
 
-// allTasks: { "YYYY-MM-DD": [ task, ... ] }
 let allTasks = {};
 let selectedDay = new Date().getDay();
 let editingId = null;
 let selectedIcon = "default";
+
+// 註冊 Service Worker 讓 App 支援離線與快取
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
+
+// 監聽 Firebase 資料庫變更 (即時同步魔法在這裡)
+db.ref('tasks').on('value', (snapshot) => {
+  const data = snapshot.val() || {};
+  allTasks = {};
+  // 將 Firebase 的物件資料轉回原本的陣列格式
+  for (const date in data) {
+    allTasks[date] = Object.values(data[date]);
+  }
+  render(); // 收到新資料就自動重新繪製畫面
+});
 
 function dateKey(d) {
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -186,7 +228,6 @@ function render() {
   document.getElementById("statLeft").textContent=tasks.length-done;
   document.getElementById("dots").innerHTML=tasks.map(t=>'<div class="dot" style="background:'+(t.done?"#E8857A":"#F5C4BF")+'"></div>').join("");
 
-  // Week strip
   document.getElementById("weekStrip").innerHTML=weekDates.map((d,i)=>{
     const isToday=d.toDateString()===today.toDateString();
     const isSel=i===selectedDay;
@@ -198,9 +239,8 @@ function render() {
       dotHtml+'</div>';
   }).join("");
 
-  // Timeline
   const sorted=[...tasks].sort((a,b)=>toMins(a.start)-toMins(b.start));
-  const hours=Array.from({length:25},(_,i)=>i); // 0-24
+  const hours=Array.from({length:25},(_,i)=>i); 
 
   if(tasks.length===0) {
     document.getElementById("timeline").innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">今天還沒有任務</div><div class="empty-sub">點右下角 + 開始新增</div></div>';
@@ -254,8 +294,11 @@ function selectDay(i) { selectedDay=i; render(); window.scrollTo({top:0,behavior
 
 function toggleDone(id) {
   const key=dateKey(selectedDate());
-  allTasks[key]=(allTasks[key]||[]).map(t=>t.id===id?{...t,done:!t.done}:t);
-  render();
+  const task=(allTasks[key]||[]).find(t=>t.id===id);
+  if(task) {
+    // 同步更新到 Firebase
+    db.ref('tasks/' + key + '/' + id).update({ done: !task.done });
+  }
 }
 
 function openModal(id) {
@@ -304,22 +347,31 @@ function saveTask() {
   const title=document.getElementById("inputTitle").value.trim();
   if(!title){ document.getElementById("inputTitle").focus(); return; }
   const key=dateKey(selectedDate());
-  const task={ title, icon:selectedIcon, start:getTime("start"), end:getTime("end"), note:document.getElementById("inputNote").value.trim(), done:false };
-  if(!editingId) {
-    if(!allTasks[key]) allTasks[key]=[];
-    allTasks[key].push({...task, id:Date.now()});
-  } else {
-    allTasks[key]=(allTasks[key]||[]).map(t=>t.id===editingId?{...task,id:t.id,done:t.done}:t);
+  
+  // 決定任務 ID
+  const taskId = editingId || Date.now();
+  
+  const task={ id: taskId, title, icon:selectedIcon, start:getTime("start"), end:getTime("end"), note:document.getElementById("inputNote").value.trim(), done: false };
+  
+  // 如果是編輯模式，先保留原本的完成狀態
+  if(editingId) {
+    const oldTask=(allTasks[key]||[]).find(t=>t.id===editingId);
+    if(oldTask) task.done = oldTask.done;
   }
-  closeModal(); render();
+
+  // 寫入到 Firebase 資料庫
+  db.ref('tasks/' + key + '/' + taskId).set(task);
+  
+  closeModal(); 
 }
 
 function deleteTask() {
   if(editingId) {
     const key=dateKey(selectedDate());
-    allTasks[key]=(allTasks[key]||[]).filter(t=>t.id!==editingId);
+    // 從 Firebase 資料庫移除
+    db.ref('tasks/' + key + '/' + editingId).remove();
   }
-  closeModal(); render();
+  closeModal(); 
 }
 
 document.getElementById("overlay").addEventListener("click",function(e){ if(e.target===this) closeModal(); });
