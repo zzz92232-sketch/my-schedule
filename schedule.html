@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>每日排程</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: #FAFAFA; font-family: -apple-system, 'PingFang TC', sans-serif; max-width: 480px; margin: 0 auto; }
+.header { background: #fff; padding: 16px 20px 0; box-shadow: 0 1px 0 rgba(0,0,0,0.06); position: sticky; top: 0; z-index: 10; }
+.header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.month-title { font-size: 22px; font-weight: 800; color: #E8857A; }
+.subtitle { font-size: 12px; color: #6B7280; margin-top: 2px; }
+.dots { display: flex; flex-wrap: wrap; gap: 4px; max-width: 120px; justify-content: flex-end; }
+.dot { width: 7px; height: 7px; border-radius: 50%; }
+.week-strip { display: flex; justify-content: space-between; padding-bottom: 12px; }
+.week-day { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.week-label { font-size: 11px; color: #6B7280; }
+.week-label.active { color: #E8857A; font-weight: 700; }
+.week-num { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #1F2937; border: 2px solid transparent; }
+.week-num.today { background: #E8857A; color: #fff; }
+.week-num.selected { border-color: #E8857A; color: #E8857A; }
+.week-num.has-tasks::after { content:''; display:block; width:5px; height:5px; border-radius:50%; background:#E8857A; position:absolute; bottom:2px; }
+.week-day-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.task-dot-row { display: flex; gap: 2px; height: 5px; }
+.task-dot-sm { width: 4px; height: 4px; border-radius: 50%; background: #E8857A; }
+
+.timeline { padding: 8px 0 120px; }
+.hour-row { display: flex; align-items: flex-start; }
+.hour-label { width: 64px; min-width: 64px; text-align: right; padding-right: 12px; font-size: 12px; color: #9CA3AF; padding-top: 2px; }
+.hour-line { flex: 1; border-top: 1px solid #F3F4F6; }
+.now-row { display: flex; align-items: center; margin: 2px 0; }
+.now-label { width: 64px; min-width: 64px; text-align: right; padding-right: 12px; font-size: 12px; font-weight: 700; color: #E8857A; }
+.now-line { flex: 1; height: 2px; background: #E8857A; border-radius: 2px; position: relative; }
+.now-dot { position: absolute; left: -5px; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #E8857A; }
+.task-row { display: flex; padding: 4px 0; }
+.task-spacer { width: 64px; min-width: 64px; }
+.task-wrap { flex: 1; padding-right: 16px; }
+.task-card { background: #fff; border-radius: 16px; padding: 10px 14px 10px 10px; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1.5px solid transparent; transition: all 0.2s; }
+.task-icon { width: 42px; height: 42px; min-width: 42px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.task-body { flex: 1; min-width: 0; }
+.task-time { font-size: 11px; color: #9CA3AF; margin-bottom: 1px; }
+.task-title { font-size: 15px; font-weight: 700; color: #1F2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-title.done { color: #9CA3AF; text-decoration: line-through; }
+.task-note { font-size: 11px; color: #6B7280; margin-top: 1px; }
+.check-btn { width: 26px; height: 26px; min-width: 26px; border-radius: 50%; border: 2px solid #E8857A; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: 700; color: #fff; }
+.empty-state { text-align: center; padding: 60px 20px; color: #9CA3AF; }
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-text { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #6B7280; }
+.empty-sub { font-size: 13px; }
+
+.add-btn { position: fixed; bottom: 80px; right: 20px; width: 54px; height: 54px; border-radius: 50%; background: #E8857A; border: none; color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 6px 20px rgba(232,133,122,0.5); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #F3F4F6; padding: 10px 20px 20px; display: flex; justify-content: space-around; }
+.stat { text-align: center; }
+.stat-num { font-size: 18px; font-weight: 800; }
+.stat-label { font-size: 11px; color: #6B7280; }
+
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: flex-end; justify-content: center; }
+.overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 24px 24px 0 0; padding: 24px 20px 40px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+.modal-handle { width: 36px; height: 4px; background: #E5E7EB; border-radius: 2px; margin: 0 auto 20px; }
+.modal h3 { font-size: 18px; font-weight: 800; color: #1F2937; margin-bottom: 4px; }
+.modal-date { font-size: 13px; color: #E8857A; margin-bottom: 16px; }
+.field-label { font-size: 13px; color: #6B7280; margin-bottom: 6px; display: block; }
+.text-input { width: 100%; border: 1.5px solid #F5C4BF; border-radius: 12px; padding: 12px 14px; font-size: 16px; outline: none; font-family: inherit; background: #fff; margin-bottom: 16px; }
+.text-input:focus { border-color: #E8857A; }
+.icon-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.icon-btn { width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid #F3F4F6; background: #fff; cursor: pointer; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+.icon-btn.selected { border-color: #E8857A; background: #FDF0EE; border-width: 2px; }
+.time-row { display: flex; gap: 12px; margin-bottom: 16px; }
+.time-col { flex: 1; }
+.time-selects { display: flex; gap: 4px; }
+.time-select { flex: 1; border: 1.5px solid #F5C4BF; border-radius: 12px; padding: 12px 6px; font-size: 16px; outline: none; font-family: inherit; background: #fff; text-align: center; color: #1F2937; -webkit-appearance: none; appearance: none; }
+.time-select:focus { border-color: #E8857A; }
+.modal-btns { display: flex; gap: 10px; margin-top: 8px; }
+.btn-cancel { flex: 1; padding: 14px; border-radius: 14px; border: 1.5px solid #F3F4F6; background: #fff; color: #6B7280; cursor: pointer; font-size: 16px; font-weight: 600; font-family: inherit; }
+.btn-save { flex: 1; padding: 14px; border-radius: 14px; border: none; background: #E8857A; color: #fff; cursor: pointer; font-size: 16px; font-weight: 600; font-family: inherit; }
+.btn-delete { width: 100%; padding: 14px; border-radius: 14px; border: none; background: #FEE2E2; color: #DC2626; cursor: pointer; font-size: 15px; font-weight: 600; font-family: inherit; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="month-title" id="monthTitle"></div>
+      <div class="subtitle" id="subtitle"></div>
+    </div>
+    <div class="dots" id="dots"></div>
+  </div>
+  <div class="week-strip" id="weekStrip"></div>
+</div>
+<div class="timeline" id="timeline"></div>
+<button class="add-btn" onclick="openModal(null)">+</button>
+<div class="bottom-bar">
+  <div class="stat"><div class="stat-num" style="color:#E8857A" id="statAll">0</div><div class="stat-label">全部</div></div>
+  <div class="stat"><div class="stat-num" style="color:#7ABA9A" id="statDone">0</div><div class="stat-label">已完成</div></div>
+  <div class="stat"><div class="stat-num" style="color:#7AB8E8" id="statLeft">0</div><div class="stat-label">待完成</div></div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <div class="modal-handle"></div>
+    <h3 id="modalTitle">新增任務</h3>
+    <div class="modal-date" id="modalDate"></div>
+    <label class="field-label">任務名稱</label>
+    <input type="text" class="text-input" id="inputTitle" placeholder="輸入任務名稱...">
+    <label class="field-label">圖示</label>
+    <div class="icon-grid" id="iconGrid"></div>
+    <div class="time-row">
+      <div class="time-col">
+        <label class="field-label">開始時間</label>
+        <div class="time-selects">
+          <select class="time-select" id="startH"></select>
+          <select class="time-select" id="startM"></select>
+        </div>
+      </div>
+      <div class="time-col">
+        <label class="field-label">結束時間</label>
+        <div class="time-selects">
+          <select class="time-select" id="endH"></select>
+          <select class="time-select" id="endM"></select>
+        </div>
+      </div>
+    </div>
+    <label class="field-label">備註</label>
+    <input type="text" class="text-input" id="inputNote" placeholder="備註（選填）...">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-save" id="btnSave" onclick="saveTask()">新增</button>
+    </div>
+    <button class="btn-delete" id="btnDelete" onclick="deleteTask()" style="display:none">🗑 刪除任務</button>
+  </div>
+</div>
+
+<script>
+const ICONS = { alarm:"⏰", rest:"☕", study:"📖", exercise:"🏃", shower:"🚿", review:"📚", game:"🎮", homework:"✏️", read:"📕", sleep:"🌙", work:"💼", meal:"🍜", music:"🎵", default:"📌" };
+const ICON_COLORS = { alarm:"#E8857A", rest:"#7AB8E8", study:"#E8857A", exercise:"#7AB8E8", shower:"#7AB8E8", review:"#E8857A", game:"#7ABA9A", homework:"#E8857A", read:"#E8A87A", sleep:"#9B7AE8", work:"#7AB8E8", meal:"#E8A87A", music:"#9B7AE8", default:"#9CA3AF" };
+const WEEK_DAYS = ["日","一","二","三","四","五","六"];
+const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+
+// allTasks: { "YYYY-MM-DD": [ task, ... ] }
+let allTasks = {};
+let selectedDay = new Date().getDay();
+let editingId = null;
+let selectedIcon = "default";
+
+function dateKey(d) {
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function getWeekDates() {
+  const today=new Date(), day=today.getDay();
+  return Array.from({length:7},(_,i)=>{ const d=new Date(today); d.setDate(today.getDate()-day+i); return d; });
+}
+function selectedDate() { return getWeekDates()[selectedDay]; }
+function todayTasks() { return allTasks[dateKey(selectedDate())] || []; }
+
+function toMins(t) { const [h,m]=t.split(":").map(Number); return h*60+m; }
+function getNow() { const n=new Date(); return String(n.getHours()).padStart(2,"0")+":"+String(n.getMinutes()).padStart(2,"0"); }
+function getDur(s,e) { let sm=toMins(s),em=toMins(e); if(em<sm)em+=1440; const d=em-sm; if(d===0)return""; if(d<60)return d+"分鐘"; if(d%60===0)return(d/60)+"小時"; return Math.floor(d/60)+"小時"+(d%60)+"分鐘"; }
+
+function buildSelects() {
+  ["startH","endH"].forEach(id=>{ const el=document.getElementById(id); for(let i=0;i<24;i++){ const o=document.createElement("option"); o.value=String(i).padStart(2,"0"); o.textContent=String(i).padStart(2,"0"); el.appendChild(o); } });
+  ["startM","endM"].forEach(id=>{ const el=document.getElementById(id); [0,5,10,15,20,25,30,35,40,45,50,55].forEach(m=>{ const o=document.createElement("option"); o.value=String(m).padStart(2,"0"); o.textContent=String(m).padStart(2,"0"); el.appendChild(o); }); });
+}
+buildSelects();
+
+function setTimeSelects(prefix, t) {
+  const [h,m]=t.split(":");
+  document.getElementById(prefix+"H").value=h;
+  const nm=String(Math.round(parseInt(m)/5)*5%60).padStart(2,"0");
+  document.getElementById(prefix+"M").value=nm;
+}
+function getTime(prefix) { return document.getElementById(prefix+"H").value+":"+document.getElementById(prefix+"M").value; }
+
+function render() {
+  const today=new Date(), now=getNow(), nowM=toMins(now);
+  const weekDates=getWeekDates();
+  const selDate=selectedDate();
+  const isShowingToday=selDate.toDateString()===today.toDateString();
+  const tasks=todayTasks();
+
+  document.getElementById("monthTitle").textContent=selDate.getFullYear()+"年 "+MONTHS[selDate.getMonth()]+" "+selDate.getDate()+"日";
+  const done=tasks.filter(t=>t.done).length;
+  document.getElementById("subtitle").textContent=tasks.length?done+"/"+tasks.length+" 項已完成":"點 + 新增今日任務";
+  document.getElementById("statAll").textContent=tasks.length;
+  document.getElementById("statDone").textContent=done;
+  document.getElementById("statLeft").textContent=tasks.length-done;
+  document.getElementById("dots").innerHTML=tasks.map(t=>'<div class="dot" style="background:'+(t.done?"#E8857A":"#F5C4BF")+'"></div>').join("");
+
+  // Week strip
+  document.getElementById("weekStrip").innerHTML=weekDates.map((d,i)=>{
+    const isToday=d.toDateString()===today.toDateString();
+    const isSel=i===selectedDay;
+    const dayTasks=allTasks[dateKey(d)]||[];
+    const dotHtml=dayTasks.length?'<div class="task-dot-row">'+dayTasks.slice(0,3).map(()=>'<div class="task-dot-sm"></div>').join("")+'</div>':'<div style="height:5px"></div>';
+    return '<div class="week-day" onclick="selectDay('+i+')">'+
+      '<span class="week-label'+(isSel?" active":"")+'">週'+WEEK_DAYS[i]+'</span>'+
+      '<div class="week-num'+(isToday?" today":isSel?" selected":"")+'">'+d.getDate()+'</div>'+
+      dotHtml+'</div>';
+  }).join("");
+
+  // Timeline
+  const sorted=[...tasks].sort((a,b)=>toMins(a.start)-toMins(b.start));
+  const hours=Array.from({length:25},(_,i)=>i); // 0-24
+
+  if(tasks.length===0) {
+    document.getElementById("timeline").innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">今天還沒有任務</div><div class="empty-sub">點右下角 + 開始新增</div></div>';
+    return;
+  }
+
+  let html="", nowDone=false;
+  hours.forEach(h=>{
+    const hasTask=sorted.some(t=>Math.floor(toMins(t.start)/60)===h);
+    const showNow=isShowingToday&&!nowDone&&nowM>=h*60&&nowM<(h+1)*60;
+    if(!hasTask && !showNow) return;
+
+    html+='<div class="hour-row"><div class="hour-label">'+String(h).padStart(2,"0")+':00</div><div class="hour-line"></div></div>';
+
+    if(showNow) {
+      nowDone=true;
+      html+='<div class="now-row" id="nowRow"><div class="now-label">'+now+'</div><div class="now-line"><div class="now-dot"></div></div></div>';
+    }
+
+    sorted.filter(t=>Math.floor(toMins(t.start)/60)===h).forEach(task=>{
+      const color=ICON_COLORS[task.icon]||"#9CA3AF";
+      let s=toMins(task.start),e=toMins(task.end);
+      if(e<s)e+=1440;
+      let n=nowM; if(n<s&&e>1440)n+=1440;
+      const active=isShowingToday&&(e===s?nowM===s:(n>=s&&n<e));
+      const past=isShowingToday&&(toMins(task.end)||toMins(task.start))<=nowM&&!task.done;
+      const dur=getDur(task.start,task.end);
+      const tstr=task.start+(task.end!==task.start?" – "+task.end:"")+(dur?" ("+dur+")":"");
+      html+='<div class="task-row"><div class="task-spacer"></div><div class="task-wrap">'+
+        '<div class="task-card" style="background:'+(active?color+"18":"#fff")+';border-color:'+(active?color+"50":"transparent")+';box-shadow:'+(active?"0 4px 16px "+color+"40":"0 1px 4px rgba(0,0,0,0.06)")+';opacity:'+(past&&!active?0.5:1)+'" onclick="openModal('+task.id+')">'+
+        '<div class="task-icon" style="background:'+(task.done?"#F3F4F6":color+"22")+'">'+(ICONS[task.icon]||"📌")+'</div>'+
+        '<div class="task-body">'+
+        (tstr?'<div class="task-time'+(active?' style="color:'+color+'"':'')+' ">'+tstr+'</div>':"")+
+        '<div class="task-title'+(task.done?" done":"")+'">'+task.title+'</div>'+
+        (task.note?'<div class="task-note">'+task.note+'</div>':"")+
+        '</div>'+
+        '<div class="check-btn" style="border-color:'+color+';background:'+(task.done?color:"transparent")+'" onclick="event.stopPropagation();toggleDone('+task.id+')">'+
+        (task.done?"✓":"")+
+        '</div></div></div></div>';
+    });
+  });
+
+  document.getElementById("timeline").innerHTML=html;
+  if(isShowingToday) {
+    const nowEl=document.getElementById("nowRow");
+    if(nowEl) setTimeout(()=>nowEl.scrollIntoView({behavior:"smooth",block:"center"}),100);
+  }
+}
+
+function selectDay(i) { selectedDay=i; render(); window.scrollTo({top:0,behavior:"smooth"}); }
+
+function toggleDone(id) {
+  const key=dateKey(selectedDate());
+  allTasks[key]=(allTasks[key]||[]).map(t=>t.id===id?{...t,done:!t.done}:t);
+  render();
+}
+
+function openModal(id) {
+  editingId=id;
+  const isNew=!id;
+  const selDate=selectedDate();
+  document.getElementById("modalTitle").textContent=isNew?"新增任務":"編輯任務";
+  document.getElementById("modalDate").textContent="週"+WEEK_DAYS[selectedDay]+" "+MONTHS[selDate.getMonth()]+selDate.getDate()+"日";
+  document.getElementById("btnSave").textContent=isNew?"新增":"儲存";
+  document.getElementById("btnDelete").style.display=isNew?"none":"block";
+
+  if(isNew) {
+    document.getElementById("inputTitle").value="";
+    document.getElementById("inputNote").value="";
+    setTimeSelects("start","09:00");
+    setTimeSelects("end","10:00");
+    selectedIcon="default";
+  } else {
+    const task=(allTasks[dateKey(selDate)]||[]).find(t=>t.id===id);
+    if(!task) return;
+    document.getElementById("inputTitle").value=task.title;
+    document.getElementById("inputNote").value=task.note;
+    setTimeSelects("start",task.start);
+    setTimeSelects("end",task.end);
+    selectedIcon=task.icon;
+  }
+
+  document.getElementById("iconGrid").innerHTML=Object.keys(ICONS).map(ic=>
+    '<div class="icon-btn'+(selectedIcon===ic?" selected":"")
+    +'" onclick="selectIcon(\''+ic+'\')">'+ICONS[ic]+'</div>'
+  ).join("");
+
+  document.getElementById("overlay").classList.add("show");
+}
+
+function selectIcon(ic) {
+  selectedIcon=ic;
+  document.querySelectorAll(".icon-btn").forEach((el,i)=>{
+    el.className="icon-btn"+(Object.keys(ICONS)[i]===ic?" selected":"");
+  });
+}
+
+function closeModal() { document.getElementById("overlay").classList.remove("show"); }
+
+function saveTask() {
+  const title=document.getElementById("inputTitle").value.trim();
+  if(!title){ document.getElementById("inputTitle").focus(); return; }
+  const key=dateKey(selectedDate());
+  const task={ title, icon:selectedIcon, start:getTime("start"), end:getTime("end"), note:document.getElementById("inputNote").value.trim(), done:false };
+  if(!editingId) {
+    if(!allTasks[key]) allTasks[key]=[];
+    allTasks[key].push({...task, id:Date.now()});
+  } else {
+    allTasks[key]=(allTasks[key]||[]).map(t=>t.id===editingId?{...task,id:t.id,done:t.done}:t);
+  }
+  closeModal(); render();
+}
+
+function deleteTask() {
+  if(editingId) {
+    const key=dateKey(selectedDate());
+    allTasks[key]=(allTasks[key]||[]).filter(t=>t.id!==editingId);
+  }
+  closeModal(); render();
+}
+
+document.getElementById("overlay").addEventListener("click",function(e){ if(e.target===this) closeModal(); });
+render();
+setInterval(()=>render(),60000);
+</script>
+</body>
+</html>
